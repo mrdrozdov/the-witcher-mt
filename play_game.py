@@ -146,10 +146,12 @@ def main():
     parser.add_argument('--inp', default='aligned_eng_rus.txt', type=str)
     parser.add_argument('--limit', default=100, type=int)
     parser.add_argument('--offset', default=100, type=int)
+    parser.add_argument('--seed', default=None, type=int)
     parser.add_argument('--game', default='fill-in-the-blank')
     options = parser.parse_args()
 
-    np.random.seed(12)
+    if options.seed is not None:
+        np.random.seed(options.seed)
 
     eng, rus = read_corpus(options.inp, options.offset, options.limit)
 
