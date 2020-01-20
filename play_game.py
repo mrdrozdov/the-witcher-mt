@@ -1,5 +1,9 @@
 import sys
 
+from Levenshtein import *
+
+from tqdm import tqdm
+
 import numpy as np
 
 
@@ -83,6 +87,7 @@ class FillInTheBlankGame(Game):
         np.random.shuffle(lst)
         i_correct = lst.index(positive_token)
 
+        # Play.
         msg = 'FILL IN THE BLANK'
         print(msg)
         print('-' * len(msg))
@@ -121,12 +126,108 @@ class FillInTheBlankGame(Game):
 
 class ChooseSentenceGame(Game):
     name = 'choose-sentence'
+    n_factor = 5
+    n_negative_hard = 6
+    n_negative_easy = 1
 
     def setup(self):
-        pass
+
+        rus_new_lines = []
+        eng_new_lines = []
+        for i, x in enumerate(self.rus.lines):
+            if len(x) == len('RUS:'):
+                continue
+            x = x[len('RUS: '):]
+            rus_new_lines.append(x.strip())
+            eng_new_lines.append(self.eng.lines[i][len('ENG: '):].strip())
+        self.rus.lines = rus_new_lines
+        self.eng.lines = eng_new_lines
+
+        # Compute similarity.
+        n = len(self.eng.lines)
+        sim = np.zeros((n, n), dtype=np.float32)
+        for i in tqdm(range(n)):
+            for j in range(n):
+                if i == j:
+                    continue
+                xi = self.eng.lines[i]
+                xj = self.eng.lines[j]
+                yi = self.rus.lines[i]
+                yj = self.rus.lines[j]
+                if xi == xj or yi == yj:
+                    continue
+                sim[i, j] = jaro_winkler(xi, xj)
+        self.sim = sim
 
     def play(self):
-        pass
+        i_positive = np.random.choice(range(len(self.rus.lines)))
+        positive_rus = self.rus.lines[i_positive]
+        positive_eng = self.eng.lines[i_positive]
+        chosen = set()
+        chosen.add(i_positive)
+
+        # Hard.
+        local_chosen = set()
+        n_keep = self.n_negative_hard * self.n_factor
+        local_sim_arg = np.argsort(self.sim[i_positive])[-n_keep:]
+        local_sim_val = self.sim[i_positive][local_sim_arg]
+        local_p = np.exp(local_sim_val * n_keep) / np.exp(local_sim_val * n_keep).sum()
+        while len(local_chosen) < self.n_negative_hard:
+            i_negative = np.random.choice(local_sim_arg, p=local_p)
+            if i_negative in local_chosen or i_negative in chosen:
+                continue
+            local_chosen.add(i_negative)
+        chosen = chosen.union(local_chosen)
+
+        # Easy.
+        local_chosen = set()
+        while len(local_chosen) < self.n_negative_easy:
+            i_negative = np.random.choice(range(len(self.eng.lines)))
+            if i_negative in local_chosen or i_negative in chosen:
+                continue
+            local_chosen.add(i_negative)
+        chosen = chosen.union(local_chosen)
+
+        # Shuffle.
+        lst = list(chosen)
+        np.random.shuffle(lst)
+        i_correct = lst.index(i_positive)
+
+        # Play.
+        msg = 'CHOOSE SENTENCE'
+        print(msg)
+        print('-' * len(msg))
+        print(positive_rus)
+        print('')
+        for i, i_sent in enumerate(lst):
+            print('{}. {}'.format(i, self.eng.lines[i_sent]))
+        print('')
+
+        n_negative = self.n_negative_hard + self.n_negative_easy
+        while True:
+            choice = input("Enter your choice: ")
+
+            try:
+                choice = int(choice)
+            except:
+                print('Choice was not an integer from [0 - {}]. Try again.'.format(n_negative))
+                continue
+
+            if choice < 0 or choice > n_negative:
+                print('Choice was not an integer from [0 - {}]. Try again.'.format(n_negative))
+                continue
+
+            break
+
+        print('Original (rus): {}'.format(positive_rus))
+        print('Original (eng): {}'.format(positive_eng))
+        print('')
+
+        if choice == i_correct:
+            print('That was correct!')
+        else:
+            print('{} is incorrect. Should have chosen: {}'.format(choice, i_correct))
+        print('')
 
 
 class ChooseWordGame(Game):
